@@ -1,0 +1,125 @@
+#!/usr/bin/env python26
+#-*- coding:utf-8 -*-
+import os
+import sys
+import re
+
+query_key_list = ["Sleep","Quit","Init DB","Query","Field List","Create DB","Drop DB","Refresh","Shutdown","Statistics","Processlist","Connect","Kill","Debug","Ping","Time","Delayed insert","Change user","Binlog Dump","Table Dump","Connect Out","Register Slave","Prepare","Execute","Log Data","Close stmt","Reset stmt","Set option","Fetch","Daemon","Error"]
+
+class MySQL_Log_Parse(object):
+	logfile_path=""
+	time_prefix=""
+	
+	query_key = ""
+	
+	def __init__(self,logfile_path,output_file):
+		self.logfile_path = logfile_path
+		if not output_file:
+			self.logfile_parsed_path = logfile_path+"_tmp"
+		else:
+			self.logfile_parsed_path = output_file
+
+		self.logfile_parsed = open(self.logfile_parsed_path,"w")
+		self.query_key = '|'.join(query_key_list)
+	
+	def _sql_completed(self,sql_log):
+		re_key = "(^\d{6} \d{2}:\d{2}:\d{2})?( )*\d* "+self.query_key
+			
+		pattern = re.compile(re_key)
+		match = pattern.search(sql_log)
+
+		if match:
+			return True
+		return False
+	def _print_line(self,sql_log):
+		time_parttern = re.compile(r'^\d{6} \d{2}:\d{2}:\d{2}')
+		match = time_parttern.search(sql_log)
+		
+		if match:
+			new_line = sql_log.strip()
+			self.time_prefix = match.group()
+			
+		else:
+			new_line = self.time_prefix+"   "+sql_log.strip()
+		self.logfile_parsed.write(new_line+'\n')	
+	
+	def log_parse(self):
+		try:
+			logfile = open(self.logfile_path,"r")
+			
+			time_prefix = ""
+
+			first_line = True
+			total_sql = ""
+
+			for line in logfile.readlines():
+				sql_is_completed = self._sql_completed(line)
+				
+				if first_line:
+					total_sql = line
+				else:
+					if sql_is_completed:
+						self._print_line(total_sql)
+						total_sql = line
+					else:	
+						total_sql = total_sql.rstrip() +" "+line.strip()	
+				first_line = False
+			self._print_line(total_sql)
+				
+				
+		except Exception, e:
+			print e
+		finally:
+			logfile.close()
+			self.logfile_parsed.close()
+			
+			
+
+
+#!/usr/bin/env python26
+#-*- coding: utf-8 -*-
+import re
+import sys
+import os
+import getopt
+from GeneralLogParser import *
+
+def usage():
+        help_msg='''Usage: ./mysql_log_parser.py [option][value]...
+        -h or --help
+        -s or --source_log="原始general log"
+        -o or --output_file = "添加时间戳以及多行处理后的log，默认是在原始general log路径后加_parsed后缀"'''
+        print help_msg
+        return 0
+
+def option_parse(argv):
+        shortargs = 'hs:o:'
+        longargs = ['help','source_log=','output_file']
+        
+        opts_list,args = getopt.getopt(argv,shortargs,longargs)
+        
+        source_log = None
+        output_file = None
+
+        for opt,arg in opts_list:
+                if opt in ('-h','--help'):
+                        usage()
+                        sys.exit()
+                elif opt in ('-s','--source_log'):
+                        source_log = arg
+                elif opt in ('-o','--output_file'):
+                        output_file = arg
+        return source_log,output_file                   
+        
+
+def main():
+        if len(sys.argv) == 1:
+                usage()
+                sys.exit(1)
+        source_log,output_file = option_parse(sys.argv[1:])
+        
+        mysql_log = MySQL_Log_Parse(source_log,output_file)
+        mysql_log.log_parse()
+
+if __name__ == "__main__":
+        main()
